@@ -1,12 +1,12 @@
 from PIL import Image
 
 # Open and scale up the image
-img = Image.open("images/sweepertiles.png")
-img = img.resize((1080, 270), Image.NEAREST)  # keeps pixel art crisp
+img = Image.open("images/analog#.png")
+img = img.resize((668, 94), Image.NEAREST)  # keeps pixel art crisp
 
-rows, cols = 2, 8
-cell_width = 1080 // cols  # 135
-cell_height = 270 // rows  # 135
+rows, cols = 1, 12
+cell_width = 680 // cols  # 135
+cell_height = 94 // rows  # 135
 
 for row in range(rows):
     for col in range(cols):
@@ -16,4 +16,4 @@ for row in range(rows):
         lower = upper + cell_height
 
         cell = img.crop((left, upper, right, lower))
-        cell.save(f"cell_{row}_{col}.png")
+        cell.save(f"cell{col}.png")

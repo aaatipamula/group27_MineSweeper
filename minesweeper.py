@@ -84,6 +84,25 @@ NUMBER_IMGS = { #maps images for adjacent mines to cells
 for num in NUMBER_IMGS:
     NUMBER_IMGS[num] = pygame.transform.scale(NUMBER_IMGS[num], (CELL_SIZE, CELL_SIZE)) #scales all number images to cell size.
 
+
+DIGIT_SIZE = (20, 30)
+DIGIT_IMGS = {
+    0: pygame.image.load('images/cell9.png'),
+    1: pygame.image.load('images/cell0.png'),
+    2: pygame.image.load('images/cell1.png'),
+    3: pygame.image.load('images/cell2.png'),
+    4: pygame.image.load('images/cell3.png'),
+    5: pygame.image.load('images/cell4.png'),
+    6: pygame.image.load('images/cell5.png'),
+    7: pygame.image.load('images/cell6.png'),
+    8: pygame.image.load('images/cell7.png'),
+    9: pygame.image.load('images/cell8.png'),
+    '-': pygame.image.load('images/cell10.png'),
+    'empty': pygame.image.load('images/cell11.png')
+}
+for key in DIGIT_IMGS:
+    DIGIT_IMGS[key] = pygame.transform.scale(DIGIT_IMGS[key], DIGIT_SIZE)
+
 # =============================================================================
 # 2. Cell Class
 # =============================================================================
@@ -319,17 +338,24 @@ class Game:
         flag_text = self.status_font.render(f"Mines: {flags_remaining}", True, COLOR_TEXT)
         self.screen.blit(flag_text, (20, 35))
 
+        if self.start_time is not None and not self.game_over:
+            self.elapsed_time = min((pygame.time.get_ticks() - self.start_time) // 1000, 999)  # Cap at 999
+        if self.start_time is None:
+            digits = ['-', '-', '-']  # Show dashes before first click
+        else:
+            # Convert elapsed time to three digits (e.g., 7 -> "007", 123 -> "123")
+            time_str = f"{self.elapsed_time:03d}" if self.elapsed_time <= 999 else "999"
+            digits = [int(d) for d in time_str]
+
+        # Blit three digit images
+        timer_x = SCREEN_WIDTH - 180  # Position timer to fit three 20x30 digits
+        for i, digit in enumerate(digits):
+            self.screen.blit(DIGIT_IMGS[digit], (timer_x + i * DIGIT_SIZE[0], 65))
+
         # Display last game status if available
         if self.last_game_status:
             last_game_text = self.status_font.render(f"Last Game: {self.last_game_status}", True, COLOR_TEXT)
-            self.screen.blit(last_game_text, (20, 55))
-
-
-        """Displays the game timer."""
-        if self.start_time is not None and not self.game_over:
-            self.elapsed_time = (pygame.time.get_ticks() - self.start_time) // 1000
-        time_text = self.status_font.render(f"Time: {self.elapsed_time}", True, COLOR_TEXT)
-        self.screen.blit(time_text, (20, 75))
+            self.screen.blit(last_game_text, (20, 75))
 
 
         pygame.draw.rect(self.screen, COLOR_RESTART_BUTTON, self.restart_button_rect, border_radius=8)
