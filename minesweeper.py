@@ -3,7 +3,7 @@
   Minesweeper
 -----------------------------------------------------------------------------
   Version:  1.2
-  Authors:  Asa Maker & Zach Sevart
+  Authors:  Asa Maker, Zach Sevart, Ebraheem Alaamer
   Created:  2025-09-10
   Modified: 2025-09-15
 -----------------------------------------------------------------------------
@@ -20,7 +20,7 @@
 -----------------------------------------------------------------------------
   Attribution:
   This code was developed in full by Asa Maker and Zach Sevart for the
-  EECS 581 Project 1 assignment. A special thanks to Kevin Likani for
+  EECS 581 Project 1 assignment. A special thanks to Kevin Likani (spell his name right Asa) for
   assistance with this project.
 -----------------------------------------------------------------------------
 """
@@ -34,11 +34,11 @@ import sys
 # =============================================================================
 # This section defines the core parameters for the game window, grid, and colors.
 
-# Grid and Cell Dimensions
+#grid and Cell Dimensions
 GRID_SIZE = 10
-CELL_SIZE = 50  # Reduced size to better fit labels
+CELL_SIZE = 50  #reduced size to better fit labels
 LABEL_AREA_SIZE = 40
-GRID_WIDTH = GRID_SIZE * CELL_SIZE
+GRID_WIDTH = GRID_SIZE * CELL_SIZE #width and height set to grid size * cell size
 GRID_HEIGHT = GRID_SIZE * CELL_SIZE
 HEADER_HEIGHT = 100
 
@@ -46,7 +46,7 @@ HEADER_HEIGHT = 100
 SCREEN_WIDTH = GRID_WIDTH + LABEL_AREA_SIZE
 SCREEN_HEIGHT = GRID_HEIGHT + HEADER_HEIGHT + LABEL_AREA_SIZE
 
-# Colors - A modern, clean color palette
+#Colors - A modern, clean color palette
 COLOR_BG = (28, 28, 30)
 COLOR_HEADER_BG = (45, 45, 48)
 COLOR_GRID_LINES = (62, 62, 66)
@@ -62,7 +62,27 @@ COLOR_NUMBERS = {
     4: (189, 99, 197), 5: (215, 186, 125), 6: (75, 180, 184),
     7: (174, 174, 174), 8: (120, 120, 120)
 }
-
+#potentially using images from original game for UI (
+CELL_IMG = pygame.image.load('images/cell_0_0.png') #og cell image
+CELL_IMG = pygame.transform.scale(CELL_IMG, (CELL_SIZE, CELL_SIZE)) #scales to fit cell
+FLAG_IMG = pygame.image.load('images/cell_0_2.png')  #og flag image
+FLAG_IMG = pygame.transform.scale(FLAG_IMG, (CELL_SIZE, CELL_SIZE)) #scales to fit cell
+MINE_IMG = pygame.image.load('images/cell_0_6.png') #og mine image
+MINE_IMG = pygame.transform.scale(MINE_IMG, (CELL_SIZE, CELL_SIZE)) #scales to fit cell
+CLICKED_IMG = pygame.image.load('images/cell_0_1.png') #og clicked/revealed image
+CLICKED_IMG = pygame.transform.scale(CLICKED_IMG, (CELL_SIZE, CELL_SIZE)) #scales to fit cell
+NUMBER_IMGS = { #maps images for adjacent mines to cells
+    1: pygame.image.load('images/cell_1_0.png'),
+    2: pygame.image.load('images/cell_1_1.png'),
+    3: pygame.image.load('images/cell_1_2.png'),
+    4: pygame.image.load('images/cell_1_3.png'),
+    5: pygame.image.load('images/cell_1_4.png'),
+    6: pygame.image.load('images/cell_1_5.png'),
+    7: pygame.image.load('images/cell_1_6.png'),
+    8: pygame.image.load('images/cell_1_7.png')
+}
+for num in NUMBER_IMGS:
+    NUMBER_IMGS[num] = pygame.transform.scale(NUMBER_IMGS[num], (CELL_SIZE, CELL_SIZE)) #scales all number images to cell size.
 
 # =============================================================================
 # 2. Cell Class
@@ -76,40 +96,33 @@ class Cell:
         # Adjust x, y coordinates to account for the label area
         self.x = col * CELL_SIZE + LABEL_AREA_SIZE
         self.y = row * CELL_SIZE + HEADER_HEIGHT + LABEL_AREA_SIZE
-        self.is_mine = False
-        self.is_revealed = False
-        self.is_flagged = False
-        self.adjacent_mines = 0
+        self.is_mine = False #cells aren't initialized as a mine
+        self.is_revealed = False #cells aren't revealed until game starts
+        self.is_flagged = False #cells don't start off flagged
+        self.adjacent_mines = 0 #cells don't have adjacent mines until start
 
     def draw(self, screen, font):
         """Renders the cell on the screen based on its current state."""
         rect = pygame.Rect(self.x, self.y, CELL_SIZE, CELL_SIZE)
         if self.is_revealed:
-            pygame.draw.rect(screen, COLOR_CELL_UNCOVERED, rect)
+            screen.blit(CLICKED_IMG, (self.x, self.y))
             if self.is_mine:
                 self.draw_mine(screen, rect)
             elif self.adjacent_mines > 0:
-                text_surface = font.render(str(self.adjacent_mines), True, COLOR_NUMBERS[self.adjacent_mines])
-                text_rect = text_surface.get_rect(center=rect.center)
-                screen.blit(text_surface, text_rect)
+                screen.blit(NUMBER_IMGS[self.adjacent_mines], (self.x, self.y))
         else:
-            pygame.draw.rect(screen, COLOR_CELL_COVERED, rect)
+            screen.blit(CELL_IMG, (self.x, self.y))
             if self.is_flagged:
                 self.draw_flag(screen, rect)
         pygame.draw.rect(screen, COLOR_GRID_LINES, rect, 1)
 
     def draw_flag(self, screen, rect):
         """Draws a flag icon in the center of the cell's rectangle."""
-        center_x, center_y = rect.center
-        flag_pole = pygame.Rect(center_x - 1, center_y - 12, 3, 24)
-        flag_triangle = [(center_x, center_y - 12), (center_x + 12, center_y - 8), (center_x, center_y - 4)]
-        pygame.draw.rect(screen, COLOR_TEXT, flag_pole)
-        pygame.draw.polygon(screen, COLOR_FLAG, flag_triangle)
+        screen.blit(FLAG_IMG, (self.x, self.y))
 
     def draw_mine(self, screen, rect):
         """Draws a mine icon in the center of the cell's rectangle."""
-        pygame.draw.circle(screen, COLOR_MINE, rect.center, CELL_SIZE * 0.3)
-        pygame.draw.circle(screen, COLOR_BG, rect.center, CELL_SIZE * 0.15)
+        screen.blit(MINE_IMG, (self.x, self.y))
 
 
 # =============================================================================
