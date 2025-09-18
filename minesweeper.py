@@ -222,6 +222,8 @@ class Game:
         self.last_game_status = None  # To track the result of the previous game
         self.reset_game()
 
+
+
     def reset_game(self):
         """Resets the game to its initial state, recording the previous game's result."""
         # Before resetting, check if a game was just completed and record its status.
@@ -235,6 +237,8 @@ class Game:
         self.first_click = True
         self.running = True
         self.flags_placed = 0
+        self.start_time = None
+        self.elapsed_time = 0
 
     def run(self):
         """The main game loop."""
@@ -267,12 +271,14 @@ class Game:
                             if event.button == 1 and not cell.is_flagged:
                                 if self.first_click:
                                     self.board.place_mines(row, col)
+                                    self.start_time = pygame.time.get_ticks()
                                     self.first_click = False
                                 self.board.reveal_cell(row, col)
                                 if cell.is_mine:
                                     self.game_over = True
                                     self.win = False
                                     self.board.reveal_all_mines()
+                                    self.elapsed_time = (pygame.time.get_ticks() - self.start_time) // 1000
                             elif event.button == 3 and not cell.is_revealed:
                                 if not cell.is_flagged and self.flags_placed < self.num_mines:
                                     cell.is_flagged = True
@@ -285,6 +291,8 @@ class Game:
         """Updates the game state, such as checking for a win."""
         if not self.game_over and not self.first_click:
             self.check_win_condition()
+            if self.game_over:
+                self.elapsed_time = (pygame.time.get_ticks() - self.start_time) // 1000 #save time to display for last round
 
     def check_win_condition(self):
         """Checks if all non-mine cells have been revealed."""
@@ -314,7 +322,15 @@ class Game:
         # Display last game status if available
         if self.last_game_status:
             last_game_text = self.status_font.render(f"Last Game: {self.last_game_status}", True, COLOR_TEXT)
-            self.screen.blit(last_game_text, (20, 65))
+            self.screen.blit(last_game_text, (20, 55))
+
+
+        """Displays the game timer."""
+        if self.start_time is not None and not self.game_over:
+            self.elapsed_time = (pygame.time.get_ticks() - self.start_time) // 1000
+        time_text = self.status_font.render(f"Time: {self.elapsed_time}", True, COLOR_TEXT)
+        self.screen.blit(time_text, (20, 75))
+
 
         pygame.draw.rect(self.screen, COLOR_RESTART_BUTTON, self.restart_button_rect, border_radius=8)
         self.screen.blit(self.restart_text_surface, self.restart_text_rect)
