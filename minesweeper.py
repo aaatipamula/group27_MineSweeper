@@ -40,7 +40,7 @@ CELL_SIZE = 50  #reduced size to better fit labels
 LABEL_AREA_SIZE = 40
 GRID_WIDTH = GRID_SIZE * CELL_SIZE #width and height set to grid size * cell size
 GRID_HEIGHT = GRID_SIZE * CELL_SIZE
-HEADER_HEIGHT = 100
+HEADER_HEIGHT = 150
 
 # Window Dimensions
 SCREEN_WIDTH = GRID_WIDTH + LABEL_AREA_SIZE
@@ -335,8 +335,16 @@ class Game:
         pygame.draw.rect(self.screen, COLOR_HEADER_BG, (0, 0, SCREEN_WIDTH, HEADER_HEIGHT))
         self.screen.blit(self.title_text_surface, self.title_text_rect)
         flags_remaining = self.num_mines - self.flags_placed
-        flag_text = self.status_font.render(f"Mines: {flags_remaining}", True, COLOR_TEXT)
-        self.screen.blit(flag_text, (20, 35))
+        flag_text = self.status_font.render(f"Mines: ", True, COLOR_TEXT)
+        self.screen.blit(flag_text, (50, 125))
+        timer_text = self.status_font.render(f"Timer: ", True, COLOR_TEXT)
+        self.screen.blit(timer_text, ((SCREEN_WIDTH // 2) + 20, 125))
+        flags_str = f"{flags_remaining:03d}"
+        digits = [int(d) for d in flags_str]
+        flags_x = 120
+        for i, digit in enumerate(digits):
+            self.screen.blit(DIGIT_IMGS[digit], (flags_x + i * DIGIT_SIZE[0], 115))
+
 
         if self.start_time is not None and not self.game_over:
             self.elapsed_time = min((pygame.time.get_ticks() - self.start_time) // 1000, 999)  # Cap at 999
@@ -350,12 +358,12 @@ class Game:
         # Blit three digit images
         timer_x = SCREEN_WIDTH - 180  # Position timer to fit three 20x30 digits
         for i, digit in enumerate(digits):
-            self.screen.blit(DIGIT_IMGS[digit], (timer_x + i * DIGIT_SIZE[0], 65))
+            self.screen.blit(DIGIT_IMGS[digit], (timer_x + i * DIGIT_SIZE[0], 115))
 
         # Display last game status if available
         if self.last_game_status:
             last_game_text = self.status_font.render(f"Last Game: {self.last_game_status}", True, COLOR_TEXT)
-            self.screen.blit(last_game_text, (20, 75))
+            self.screen.blit(last_game_text, (20, 65))
 
 
         pygame.draw.rect(self.screen, COLOR_RESTART_BUTTON, self.restart_button_rect, border_radius=8)
