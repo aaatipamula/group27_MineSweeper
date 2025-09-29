@@ -25,9 +25,13 @@
 -----------------------------------------------------------------------------
 """
 
+from typing import Callable, Literal, TypeVar, Optional
 import pygame
 import random
 import sys
+
+# TYPES
+Difficulty = Literal['easy', 'medium', 'hard']
 
 # =============================================================================
 # 1. Game Constants and Configuration
@@ -118,7 +122,8 @@ class Cell:
 class Board:
     """Manages the grid of cells and core game logic."""
 
-    def __init__(self, num_mines):
+    def __init__(self, num_mines: int, difficulty: str):
+        self.uncover_cell = getattr(self, f"uncover_cell_{difficulty}")
         self.grid = [[Cell(row, col) for col in range(GRID_SIZE)] for row in range(GRID_SIZE)]
         self.num_mines = num_mines
 
@@ -157,6 +162,19 @@ class Board:
                     count += 1
         return count
 
+    def uncover_cell_easy(self) -> Cell:
+        print("Uncovering cell (Easy)")
+        r = random.randint(0, self.num_mines-1)
+        c = random.randint(0, self.num_mines-1)
+        cell = self.grid[r][c]
+        while (cell.is_revealed and (not cell.is_flagged)):
+            r = random.randint(0, self.num_mines-1)
+            c = random.randint(0, self.num_mines-1)
+            cell = self.grid[r][c]
+        print(f"Picked cell {r + 1}:{chr(c + 65)}")
+        self.reveal_cell(r, c)
+        return cell
+
     def reveal_cell(self, row, col):
         """Recursively reveals cells."""
         cell = self.grid[row][col]
@@ -184,7 +202,7 @@ class Board:
 class Game:
     """Main class to manage the game loop, state, and rendering."""
 
-    def __init__(self, num_mines):
+    def __init__(self, num_mines: int, difficulty: str):
         pygame.init()
         pygame.font.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -205,6 +223,7 @@ class Game:
         self.restart_button_rect = pygame.Rect(SCREEN_WIDTH - 120, 30, 100, 40)
         self.restart_text_rect = self.restart_text_surface.get_rect(center=self.restart_button_rect.center)
 
+        self.difficulty = difficulty
         self.num_mines = num_mines
         self.last_game_status = None  # To track the result of the previous game
         self.reset_game()
@@ -216,7 +235,7 @@ class Game:
         if hasattr(self, 'game_over') and self.game_over:
             self.last_game_status = "Victory!" if self.win else "Loss"
 
-        self.board = Board(self.num_mines)
+        self.board = Board(self.num_mines, self.difficulty)
         self.game_over = False
         self.win = False
         self.first_click = True
@@ -255,11 +274,20 @@ class Game:
                                 if self.first_click:
                                     self.board.place_mines(row, col)
                                     self.first_click = False
+
                                 self.board.reveal_cell(row, col)
                                 if cell.is_mine:
                                     self.game_over = True
                                     self.win = False
                                     self.board.reveal_all_mines()
+                                    return
+
+                                cell = self.board.uncover_cell() # Always 
+                                if cell.is_mine:
+                                    self.game_over = True
+                                    self.win = False
+                                    self.board.reveal_all_mines()
+
                             elif event.button == 3 and not cell.is_revealed:
                                 if not cell.is_flagged and self.flags_placed < self.num_mines:
                                     cell.is_flagged = True
@@ -267,6 +295,12 @@ class Game:
                                 elif cell.is_flagged:
                                     cell.is_flagged = False
                                     self.flags_placed -= 1
+
+                                # cell = self.board.uncover_cell() # Always 
+                                # if cell.is_mine:
+                                #     self.game_over = True
+                                #     self.win = False
+                                #     self.board.reveal_all_mines()
 
     def update(self):
         """Updates the game state, such as checking for a win."""
@@ -324,22 +358,40 @@ class Game:
                 center=(LABEL_AREA_SIZE / 2, HEADER_HEIGHT + LABEL_AREA_SIZE + i * CELL_SIZE + CELL_SIZE / 2))
             self.screen.blit(row_text, row_rect)
 
+T = TypeVar("T")
+
+def get_val(prompt: str,
+            cast: Callable[[str], T],
+            *,
+            validate: Optional[Callable[[T], bool]] = None,
+            error: Optional[str] = None
+            ) -> T:
+    while True:
+        user_input = input(prompt)
+        try:
+            val = cast(user_input)
+            if validate is not None and validate(val):
+                return val
+            else:
+                print(error)
+        except ValueError:
+            print(f"Invalid input. Please enter a valid {cast}.")
 
 # =============================================================================
 # 5. Main Execution Block
 # =============================================================================
 if __name__ == "__main__":
-    while True:
-        try:
-            num_mines = int(input("Enter the number of mines (10-20): "))
-            if 10 <= num_mines <= 20:
-                break
-            else:
-                print("Invalid range. Please enter a number between 10 and 20.")
-        except ValueError:
-            print("Invalid input. Please enter a valid number.")
+    validate_mine = lambda x: x >= 10 and x <= 20
+    error_mine = "Invalid range. Please enter a number between 10 and 20."
+    num_mines = get_val("Enter a number of mines [10-20]: ", int, validate=validate_mine, error=error_mine)
 
-    game = Game(num_mines)
+    def validate_difficulty(val: str):
+        val = val.lower().strip()
+        return val in ("easy", "medium", "hard")
+    error_difficulty = "Invalid difficulty. Please enter a difficulty of easy, medium, or hard."
+    difficulty = get_val("Enter a difficulty [Easy, Medium, Hard]: ", str, validate=validate_difficulty, error=error_difficulty)
+
+    game = Game(num_mines, difficulty)
     game.run()
 
 
