@@ -32,6 +32,7 @@ import sys
 
 # TYPES
 Difficulty = Literal['easy', 'medium', 'hard']
+Self = TypeVar('Self')
 
 # =============================================================================
 # 1. Game Constants and Configuration
@@ -67,7 +68,16 @@ COLOR_NUMBERS = {
     7: (174, 174, 174), 8: (120, 120, 120)
 }
 
+# Cell Border
+BORDER_THICKNESS = 2
+BORDER_COLOR = (255, 255, 0)
 
+# AI Solver timeout (in milliseconds)
+AI_SOLVER_TIMEOUT = 500
+
+# =============================================================================
+# 1.5 Audio Class
+# =============================================================================
 class Audio:
     def __init__(self):
         self.enabled = True
@@ -114,6 +124,15 @@ class Cell:
         self.is_revealed = False
         self.is_flagged = False
         self.adjacent_mines = 0
+        self._border = False  # For future use if needed
+
+    @property
+    def border(self):
+        return self._border
+
+    @border.setter
+    def border(self, value: bool):
+        self._border = value
 
     def draw(self, screen, font):
         """Renders the cell on the screen based on its current state."""
@@ -130,6 +149,8 @@ class Cell:
             pygame.draw.rect(screen, COLOR_CELL_COVERED, rect)
             if self.is_flagged:
                 self.draw_flag(screen, rect)
+        if self.border:
+            pygame.draw.rect(screen, BORDER_COLOR, rect, BORDER_THICKNESS)
         pygame.draw.rect(screen, COLOR_GRID_LINES, rect, 1)
 
     def draw_flag(self, screen, rect):
@@ -156,6 +177,20 @@ class Board:
         self.uncover_cell = getattr(self, f"uncover_cell_{difficulty}")
         self.grid = [[Cell(row, col) for col in range(GRID_SIZE)] for row in range(GRID_SIZE)]
         self.num_mines = num_mines
+        self.last_cell = None  # To track the last uncovered cell
+
+    @staticmethod
+    def wrap_uncover(func: Callable[[Self], Cell]):
+        def wrapper(self, is_first: bool = False) -> Cell:
+            cell = func(self)
+            if self.last_cell:
+                self.last_cell.border = False
+            cell.border = True
+            self.last_cell = cell
+            if not is_first:
+                self.reveal_cell(cell.row, cell.col)
+            return cell
+        return wrapper
 
     def place_mines(self, first_click_row, first_click_col):
         """Randomly places mines, ensuring the first clicked cell is safe."""
@@ -192,17 +227,17 @@ class Board:
                     count += 1
         return count
 
+    @wrap_uncover
     def uncover_cell_easy(self) -> Cell:
         print("Uncovering cell (Easy)")
-        r = random.randint(0, self.num_mines-1)
-        c = random.randint(0, self.num_mines-1)
+        r = random.randint(0, GRID_SIZE-1)
+        c = random.randint(0, GRID_SIZE-1)
         cell = self.grid[r][c]
-        while (cell.is_revealed and (not cell.is_flagged)):
-            r = random.randint(0, self.num_mines-1)
-            c = random.randint(0, self.num_mines-1)
+        while cell.is_revealed or cell.is_flagged:
+            r = random.randint(0, GRID_SIZE-1)
+            c = random.randint(0, GRID_SIZE-1)
             cell = self.grid[r][c]
         print(f"Picked cell {r + 1}:{chr(c + 65)}")
-        self.reveal_cell(r, c)
         return cell
 
     def reveal_cell(self, row, col):
@@ -231,8 +266,9 @@ class Board:
 # =============================================================================
 class Game:
     """Main class to manage the game loop, state, and rendering."""
+    AUTO_PICK = pygame.USEREVENT + 1
 
-    def __init__(self, num_mines: int, difficulty: str):
+    def __init__(self, num_mines: int, difficulty: str, is_interactive: bool):
         pygame.init()
         self.audio = Audio()
         pygame.font.init()
@@ -254,8 +290,9 @@ class Game:
         self.restart_button_rect = pygame.Rect(SCREEN_WIDTH - 120, 30, 100, 40)
         self.restart_text_rect = self.restart_text_surface.get_rect(center=self.restart_button_rect.center)
 
-        self.difficulty = difficulty
         self.num_mines = num_mines
+        self.difficulty = difficulty
+        self.is_interactive = is_interactive
         self.last_game_status = None  # To track the result of the previous game
         self.reset_game()
 
@@ -275,6 +312,10 @@ class Game:
 
     def run(self):
         """The main game loop."""
+        # If the game is not interactive, automatically uncover cells
+        if not self.is_interactive:
+            pygame.time.set_timer(self.AUTO_PICK, AI_SOLVER_TIMEOUT)
+
         while self.running:
             self.handle_events()
             self.update()
@@ -286,6 +327,21 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+
+            if event.type == self.AUTO_PICK and not self.is_interactive and not self.game_over:
+                cell = self.board.uncover_cell(is_first=self.first_click)
+
+                if self.first_click:
+                    self.board.place_mines(cell.row, cell.col)
+                    self.board.reveal_cell(cell.row, cell.col)
+                    self.first_click = False
+
+                if cell.is_mine:
+                    self.game_over = True
+                    self.win = False
+                    self.board.reveal_all_mines()
+                    self.audio.play("boom")
+                continue  # Skip further event processing for this iteration
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 # Restart button click
@@ -333,18 +389,17 @@ class Game:
                                     self.audio.play("boom")
                                     return
                                 else:
-
                                     if post_revealed - pre_revealed > 5:
                                         self.audio.play("cascade")
                                     else:
                                         self.audio.play("click")
 
-                                '''cell2 = self.board.uncover_cell()
+                                cell2 = self.board.uncover_cell()
                                 if cell2.is_mine:
                                     self.game_over = True
                                     self.win = False
                                     self.board.reveal_all_mines()
-                                    self.audio.play("boom")'''
+                                    self.audio.play("boom")
 
 
     def update(self):
@@ -411,14 +466,14 @@ T = TypeVar("T")
 def get_val(prompt: str,
             cast: Callable[[str], T],
             *,
-            validate: Optional[Callable[[T], bool]] = None,
+            validate: Callable[[T], bool] = lambda _: True,
             error: Optional[str] = None
             ) -> T:
     while True:
         user_input = input(prompt)
         try:
             val = cast(user_input)
-            if validate is not None and validate(val):
+            if validate(val):
                 return val
             else:
                 print(error)
@@ -433,13 +488,17 @@ if __name__ == "__main__":
     error_mine = "Invalid range. Please enter a number between 10 and 20."
     num_mines = get_val("Enter a number of mines [10-20]: ", int, validate=validate_mine, error=error_mine)
 
+    def cast_interactive(val: str) -> bool:
+       return val.strip().lower() in ("yes", "y", "")
+    is_interactive = get_val("Play against AI [y/n]: ", cast_interactive)
+
     def validate_difficulty(val: str):
         val = val.lower().strip()
         return val in ("easy", "medium", "hard")
     error_difficulty = "Invalid difficulty. Please enter a difficulty of easy, medium, or hard."
     difficulty = get_val("Enter a difficulty [easy, medium, hard]: ", str, validate=validate_difficulty, error=error_difficulty)
 
-    game = Game(num_mines, difficulty)
+    game = Game(num_mines, difficulty, is_interactive)
     game.run()
 
 
