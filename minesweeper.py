@@ -68,6 +68,36 @@ COLOR_NUMBERS = {
 }
 
 
+class Audio:
+    def __init__(self):
+        self.enabled = True
+        try:
+            pygame.mixer.pre_init(44100, -16, 2, 256)
+            pygame.mixer.init()
+        except Exception as e:
+            print(f"[Audio disabled] {e}")
+            self.enabled = False
+            return
+
+        def load(path):
+            return pygame.mixer.Sound(path) if self.enabled else None
+
+        self.sounds = {
+            "click":     load("sfx/mouse-click-153941.mp3"),      # left-click reveal (safe)
+            "flag":      load("sfx/pop-94319.mp3"),       # place/remove flag
+            "cascade":   load("sfx/fast-whoosh-118248.mp3"),    # flood-reveal of 0-adj cells
+            "boom":      load("sfx/explosion-6055.mp3"),       # hit a mine
+            "win":       load("sfx/success-fanfare-trumpets-6185.mp3"),        # victory
+            "restart":   load("sfx/mouse-click-153941.mp3")    # restart button
+        }
+
+
+    def play(self, name: str):
+        if self.enabled and (snd := self.sounds.get(name)):
+            snd.play()
+
+
+
 # =============================================================================
 # 2. Cell Class
 # =============================================================================
@@ -204,6 +234,7 @@ class Game:
 
     def __init__(self, num_mines: int, difficulty: str):
         pygame.init()
+        self.audio = Audio()
         pygame.font.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("EECS 581 Minesweeper")
@@ -252,60 +283,77 @@ class Game:
         sys.exit()
 
     def handle_events(self):
-        """Processes all user inputs."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+
             if event.type == pygame.MOUSEBUTTONDOWN:
+                # Restart button click
                 if self.restart_button_rect.collidepoint(event.pos):
+                    self.audio.play("restart")
                     self.reset_game()
                     return
 
                 if not self.game_over:
                     x, y = event.pos
-                    # Adjust click coordinates for the label area offset
                     if x > LABEL_AREA_SIZE and y > HEADER_HEIGHT + LABEL_AREA_SIZE:
                         col = (x - LABEL_AREA_SIZE) // CELL_SIZE
                         row = (y - HEADER_HEIGHT - LABEL_AREA_SIZE) // CELL_SIZE
 
                         if 0 <= row < GRID_SIZE and 0 <= col < GRID_SIZE:
                             cell = self.board.grid[row][col]
+
+                            # Right-click flag toggle
+                            if event.button == 3 and not cell.is_revealed:
+                                if not cell.is_flagged and self.flags_placed < self.num_mines:
+                                    cell.is_flagged = True
+                                    self.flags_placed += 1
+                                    self.audio.play("flag")
+                                elif cell.is_flagged:
+                                    cell.is_flagged = False
+                                    self.flags_placed -= 1
+                                    self.audio.play("flag")
+                                return
+
+                            # Left-click reveal
                             if event.button == 1 and not cell.is_flagged:
                                 if self.first_click:
                                     self.board.place_mines(row, col)
                                     self.first_click = False
 
+                                # Reveal and decide which SFX to play
+                                pre_revealed = sum(1 for r in self.board.grid for c in r if c.is_revealed)
                                 self.board.reveal_cell(row, col)
+                                post_revealed = sum(1 for r in self.board.grid for c in r if c.is_revealed)
+
                                 if cell.is_mine:
                                     self.game_over = True
                                     self.win = False
                                     self.board.reveal_all_mines()
+                                    self.audio.play("boom")
                                     return
+                                else:
 
-                                cell = self.board.uncover_cell() # Always 
-                                if cell.is_mine:
+                                    if post_revealed - pre_revealed > 5:
+                                        self.audio.play("cascade")
+                                    else:
+                                        self.audio.play("click")
+
+                                '''cell2 = self.board.uncover_cell()
+                                if cell2.is_mine:
                                     self.game_over = True
                                     self.win = False
                                     self.board.reveal_all_mines()
+                                    self.audio.play("boom")'''
 
-                            elif event.button == 3 and not cell.is_revealed:
-                                if not cell.is_flagged and self.flags_placed < self.num_mines:
-                                    cell.is_flagged = True
-                                    self.flags_placed += 1
-                                elif cell.is_flagged:
-                                    cell.is_flagged = False
-                                    self.flags_placed -= 1
-
-                                # cell = self.board.uncover_cell() # Always 
-                                # if cell.is_mine:
-                                #     self.game_over = True
-                                #     self.win = False
-                                #     self.board.reveal_all_mines()
 
     def update(self):
-        """Updates the game state, such as checking for a win."""
         if not self.game_over and not self.first_click:
+            was_won = self.win  # before check
             self.check_win_condition()
+            # If we just changed to win=True, play once
+            if (not was_won) and self.win:
+                self.audio.play("win")
 
     def check_win_condition(self):
         """Checks if all non-mine cells have been revealed."""
@@ -389,7 +437,7 @@ if __name__ == "__main__":
         val = val.lower().strip()
         return val in ("easy", "medium", "hard")
     error_difficulty = "Invalid difficulty. Please enter a difficulty of easy, medium, or hard."
-    difficulty = get_val("Enter a difficulty [Easy, Medium, Hard]: ", str, validate=validate_difficulty, error=error_difficulty)
+    difficulty = get_val("Enter a difficulty [easy, medium, hard]: ", str, validate=validate_difficulty, error=error_difficulty)
 
     game = Game(num_mines, difficulty)
     game.run()
