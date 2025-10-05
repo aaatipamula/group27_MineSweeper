@@ -25,7 +25,7 @@
 -----------------------------------------------------------------------------
 """
 
-from typing import Callable, Literal, TypeVar, Optional
+from typing import Callable, Generator, Literal, TypeVar, Optional
 import pygame
 import random
 import sys
@@ -227,19 +227,6 @@ class Board:
                     count += 1
         return count
 
-    @wrap_uncover
-    def uncover_cell_easy(self) -> Cell:
-        print("Uncovering cell (Easy)")
-        r = random.randint(0, GRID_SIZE-1)
-        c = random.randint(0, GRID_SIZE-1)
-        cell = self.grid[r][c]
-        while cell.is_revealed or cell.is_flagged:
-            r = random.randint(0, GRID_SIZE-1)
-            c = random.randint(0, GRID_SIZE-1)
-            cell = self.grid[r][c]
-        print(f"Picked cell {r + 1}:{chr(c + 65)}")
-        return cell
-
     def reveal_cell(self, row, col):
         """Recursively reveals cells."""
         cell = self.grid[row][col]
@@ -259,6 +246,76 @@ class Board:
             for cell in row:
                 if cell.is_mine:
                     cell.is_revealed = True
+
+    def neighbors(self, cell: Cell) -> Generator[Cell, None, None]:
+        """Returns a list of neighboring cells."""
+        for r_offset in range(-1, 2):
+            for c_offset in range(-1, 2):
+                if r_offset == 0 and c_offset == 0: continue
+                r, c = cell.row + r_offset, cell.col + c_offset
+                if 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE:
+                    yield self.grid[r][c]
+
+    @wrap_uncover
+    def uncover_cell_easy(self) -> Cell:
+        print("Uncovering cell (Easy)")
+        r = random.randint(0, GRID_SIZE-1)
+        c = random.randint(0, GRID_SIZE-1)
+        cell = self.grid[r][c]
+        while cell.is_revealed or cell.is_flagged:
+            r = random.randint(0, GRID_SIZE-1)
+            c = random.randint(0, GRID_SIZE-1)
+            cell = self.grid[r][c]
+        print(f"Picked cell {r + 1}:{chr(c + 65)}")
+        return cell
+
+    @wrap_uncover
+    def uncover_cell_medium(self) -> Cell:
+        print("Uncovering cell (Medium)")
+        # Prefer cells adjacent to revealed cells
+        safe_cells = set()
+        flag_cells = set()
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE):
+                cell = self.grid[r][c]
+                if cell.is_revealed and cell.adjacent_mines > 0:
+                    covered_neighbors = [n for n in self.neighbors(cell) if not n.is_revealed and not n.is_flagged]
+                    flagged_neighbors = [n for n in self.neighbors(cell) if n.is_flagged]
+
+                    if len(flagged_neighbors) == cell.adjacent_mines:
+                        safe_cells.update(covered_neighbors)
+
+                    if len(covered_neighbors) == cell.adjacent_mines - len(flagged_neighbors):
+                        flag_cells.update(covered_neighbors)
+
+        if flag_cells:
+            cell = random.choice(list(flag_cells))
+            print(f"Picked cell {cell.row + 1}:{chr(cell.col + 65)} (flagged)")
+            cell.is_flagged = True
+            return cell
+
+        if safe_cells:
+            cell = random.choice(list(safe_cells))
+            print(f"Picked cell {cell.row + 1}:{chr(cell.col + 65)} (safe)")
+            return cell
+
+        return self.uncover_cell_easy(is_first=True)
+
+    @wrap_uncover
+    def uncover_cell_hard(self) -> Cell:
+        print("Uncovering cell (Hard)")
+        # Only pick cells which are gauranteed safe
+        candidates = []
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE):
+                cell = self.grid[r][c]
+                is_safe = not cell.is_revealed and not cell.is_flagged and not cell.is_mine
+                if is_safe:
+                    candidates.append(cell)
+
+        cell = random.choice(candidates)
+        print(f"Picked cell {cell.row + 1}:{chr(cell.col + 65)}")
+        return cell
 
 
 # =============================================================================
@@ -329,14 +386,26 @@ class Game:
                 self.running = False
 
             if event.type == self.AUTO_PICK and not self.is_interactive and not self.game_over:
+                flags_before = self.flags_placed
+
+                pre_revealed = sum(1 for r in self.board.grid for c in r if c.is_revealed)
                 cell = self.board.uncover_cell(is_first=self.first_click)
+                post_revealed = sum(1 for r in self.board.grid for c in r if c.is_revealed)
+
+                if flags_before < self.flags_placed:
+                    self.audio.play("flag")
+                elif cell.is_revealed:
+                    if post_revealed - pre_revealed > 5:
+                        self.audio.play("cascade")
+                    else:
+                        self.audio.play("click")
 
                 if self.first_click:
                     self.board.place_mines(cell.row, cell.col)
                     self.board.reveal_cell(cell.row, cell.col)
                     self.first_click = False
 
-                if cell.is_mine:
+                if cell.is_mine and not cell.is_flagged:
                     self.game_over = True
                     self.win = False
                     self.board.reveal_all_mines()
@@ -369,7 +438,13 @@ class Game:
                                     cell.is_flagged = False
                                     self.flags_placed -= 1
                                     self.audio.play("flag")
-                                return
+
+                                cell2 = self.board.uncover_cell()
+                                if cell2.is_mine and not cell2.is_flagged:
+                                    self.game_over = True
+                                    self.win = False
+                                    self.board.reveal_all_mines()
+                                    self.audio.play("boom")
 
                             # Left-click reveal
                             if event.button == 1 and not cell.is_flagged:
@@ -395,7 +470,7 @@ class Game:
                                         self.audio.play("click")
 
                                 cell2 = self.board.uncover_cell()
-                                if cell2.is_mine:
+                                if cell2.is_mine and not cell2.is_flagged:
                                     self.game_over = True
                                     self.win = False
                                     self.board.reveal_all_mines()
